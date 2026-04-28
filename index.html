@@ -1,219 +1,309 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Rocket, Heart, Zap, ShieldAlert, Play, RotateCcw, Crosshair, XCircle } from 'lucide-react';
-
-const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
-
-const generateMathProblem = (level) => {
-  const types = ['logaritma', 'turunan', 'trigonometri', 'integral', 'aljabar'];
-  const type = types[Math.floor(Math.random() * Math.min(types.length, 2 + Math.floor(level / 2)))];
-
-  let q, a, w = [];
-  switch (type) {
-    case 'logaritma':
-      const base = [2, 3, 5][Math.floor(Math.random() * 3)];
-      const res = Math.floor(Math.random() * 3) + 1;
-      q = `${base === 2 ? '²' : base === 3 ? '³' : '⁵'}log(${Math.pow(base, res)})`;
-      a = res.toString();
-      w = [res + 1, res + 2, Math.max(1, res - 1), res * 2].map(String);
-      break;
-    case 'turunan':
-      const c = Math.floor(Math.random() * 4) + 1;
-      q = `f'(x) dr x² di x=${c}`;
-      a = (2 * c).toString();
-      w = [c, c * c, 2 * c + 2, 2 * c - 2].map(String);
-      break;
-    case 'trigonometri':
-      const trigs = [{q:'2sin(30°)', a:'1'}, {q:'cos(0°)', a:'1'}, {q:'tan(45°)', a:'1'}, {q:'4sin(30°)', a:'2'}];
-      const sel = trigs[Math.floor(Math.random() * trigs.length)];
-      q = sel.q; a = sel.a;
-      w = ['0', '2', '0.5', '√2', '-1', '√3'];
-      break;
-    case 'integral':
-      const x = Math.floor(Math.random() * 3) + 1;
-      q = `∫ 2x dx bts [0, ${x}]`;
-      a = (x * x).toString();
-      w = [x, x * 2, x * x + 1, x * x * x].map(String);
-      break;
-    default:
-      const ac = Math.floor(Math.random() * 5) + 2, ans = Math.floor(Math.random() * 10) + 1;
-      q = `${ac}x = ${ac * ans}, x=?`;
-      a = ans.toString();
-      w = [ans + 1, ans - 1, ans * 2, Math.floor(Math.random() * 15) + 1].map(String);
-  }
-
-  w = [...new Set(w)].filter(x => x !== a).slice(0, 3);
-  while(w.length < 3) w.push(Math.floor(Math.random() * 20).toString());
-  return { q, a, options: shuffle([a, ...w.slice(0,3)]), type: type.toUpperCase() };
-};
-
-export default function MathQuest() {
-  const [st, setSt] = useState('menu'); // menu, playing, gameover
-  const [sc, setSc] = useState({ score: 0, hp: 3, level: 1 });
-  const [entities, setEntities] = useState({ enemies: [], lasers: [], failed: new Set() });
-  const [activeId, setActiveId] = useState(null);
-  const [shake, setShake] = useState(false);
-
-  const playSound = useCallback((type) => {
-    if (typeof window === 'undefined' || !window.AudioContext) return;
-    try {
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator(), gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.type = type === 'shoot' ? 'square' : 'sawtooth';
-      osc.frequency.setValueAtTime(type === 'shoot' ? 880 : (type === 'wrong' ? 150 : 100), ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(type === 'shoot' ? 110 : 40, ctx.currentTime + (type === 'shoot' ? 0.1 : 0.3));
-      gain.gain.setValueAtTime(type === 'shoot' ? 0.1 : 0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + (type === 'shoot' ? 0.1 : 0.3));
-      osc.start(); osc.stop(ctx.currentTime + (type === 'shoot' ? 0.1 : 0.3));
-    } catch (e) {}
-  }, []);
-
-  // Update Target
-  useEffect(() => {
-    if (st !== 'playing') return;
-    const valid = entities.enemies.filter(e => !entities.failed.has(e.id));
-    if (!valid.length) return setActiveId(null);
-    setActiveId(valid.reduce((p, c) => (c.y > p.y ? c : p)).id);
-  }, [entities.enemies, entities.failed, st]);
-
-  // Game Loop
-  useEffect(() => {
-    if (st !== 'playing') return;
-    const speed = 0.05 + sc.level * 0.01;
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MathQuest: Dimension Rift</title>
     
-    const moveInt = setInterval(() => {
-      setEntities(prev => {
-        let dmg = 0;
-        const enemies = prev.enemies.map(e => {
-          const newY = e.y + speed;
-          if (newY > 85) dmg++;
-          return { ...e, y: newY };
-        }).filter(e => e.y <= 85);
-        
-        if (dmg > 0) {
-          playSound('damage'); setShake(true); setTimeout(() => setShake(false), 300);
-          setSc(s => { const nh = s.hp - dmg; if (nh <= 0) setSt('gameover'); return { ...s, hp: nh }; });
+    <!-- 1. Memuat Tailwind CSS untuk Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Memuat React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- 3. Memuat Babel untuk menerjemahkan JSX secara otomatis di Browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        /* Animasi Kustom Game */
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25%, 75% { transform: translateX(-10px); } 50% { transform: translateX(10px); } }
+        @keyframes targetPulse { 0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(34, 211, 238, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); } }
+        @keyframes twinkle { 0% { opacity: 0.2; } 100% { opacity: 1; transform: scale(1.5); } }
+        body { margin: 0; padding: 0; background-color: #020617; overflow: hidden; font-family: sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        // --- KOMPONEN IKON (Menggantikan lucide-react agar bisa jalan tanpa npm) ---
+        const Rocket = ({size=24, className=""}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>);
+        const Heart = ({size=24, className="", filled=false}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>);
+        const Zap = ({size=24, className=""}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>);
+        const ShieldAlert = ({size=24, className=""}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>);
+        const Play = ({size=24, className=""}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="5 3 19 12 5 21 5 3"/></svg>);
+        const RotateCcw = ({size=24, className=""}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>);
+        const Crosshair = ({size=24, className=""}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg>);
+        const XCircle = ({size=24, className=""}) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>);
+
+        // --- LOGIKA GAME ---
+        const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
+
+        const generateMathProblem = (level) => {
+            const types = ['logaritma', 'turunan', 'trigonometri', 'integral', 'aljabar'];
+            const type = types[Math.floor(Math.random() * Math.min(types.length, 2 + Math.floor(level / 2)))];
+
+            let q, a, w = [];
+            switch (type) {
+                case 'logaritma':
+                    const base = [2, 3, 5][Math.floor(Math.random() * 3)];
+                    const res = Math.floor(Math.random() * 3) + 1;
+                    q = `${base === 2 ? '²' : base === 3 ? '³' : '⁵'}log(${Math.pow(base, res)})`;
+                    a = res.toString();
+                    w = [res + 1, res + 2, Math.max(1, res - 1), res * 2].map(String);
+                    break;
+                case 'turunan':
+                    const c = Math.floor(Math.random() * 4) + 1;
+                    q = `f'(x) dr x² di x=${c}`;
+                    a = (2 * c).toString();
+                    w = [c, c * c, 2 * c + 2, 2 * c - 2].map(String);
+                    break;
+                case 'trigonometri':
+                    const trigs = [{q:'2sin(30°)', a:'1'}, {q:'cos(0°)', a:'1'}, {q:'tan(45°)', a:'1'}, {q:'4sin(30°)', a:'2'}];
+                    const sel = trigs[Math.floor(Math.random() * trigs.length)];
+                    q = sel.q; a = sel.a;
+                    w = ['0', '2', '0.5', '√2', '-1', '√3'];
+                    break;
+                case 'integral':
+                    const x = Math.floor(Math.random() * 3) + 1;
+                    q = `∫ 2x dx bts [0, ${x}]`;
+                    a = (x * x).toString();
+                    w = [x, x * 2, x * x + 1, x * x * x].map(String);
+                    break;
+                default:
+                    const ac = Math.floor(Math.random() * 5) + 2, ans = Math.floor(Math.random() * 10) + 1;
+                    q = `${ac}x = ${ac * ans}, x=?`;
+                    a = ans.toString();
+                    w = [ans + 1, ans - 1, ans * 2, Math.floor(Math.random() * 15) + 1].map(String);
+            }
+
+            w = [...new Set(w)].filter(x => x !== a).slice(0, 3);
+            while(w.length < 3) w.push(Math.floor(Math.random() * 20).toString());
+            return { q, a, options: shuffle([a, ...w.slice(0,3)]), type: type.toUpperCase() };
+        };
+
+        function MathQuest() {
+            const [st, setSt] = useState('menu'); // menu, playing, gameover
+            const [sc, setSc] = useState({ score: 0, hp: 3, level: 1 });
+            const [entities, setEntities] = useState({ enemies: [], lasers: [], failed: new Set() });
+            const [activeId, setActiveId] = useState(null);
+            const [shake, setShake] = useState(false);
+
+            const playSound = useCallback((type) => {
+                if (typeof window === 'undefined' || !window.AudioContext) return;
+                try {
+                    const ctx = new window.AudioContext();
+                    const osc = ctx.createOscillator(), gain = ctx.createGain();
+                    osc.connect(gain); gain.connect(ctx.destination);
+                    osc.type = type === 'shoot' ? 'square' : 'sawtooth';
+                    osc.frequency.setValueAtTime(type === 'shoot' ? 880 : (type === 'wrong' ? 150 : 100), ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(type === 'shoot' ? 110 : 40, ctx.currentTime + (type === 'shoot' ? 0.1 : 0.3));
+                    gain.gain.setValueAtTime(type === 'shoot' ? 0.1 : 0.2, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + (type === 'shoot' ? 0.1 : 0.3));
+                    osc.start(); osc.stop(ctx.currentTime + (type === 'shoot' ? 0.1 : 0.3));
+                } catch (e) {}
+            }, []);
+
+            // Pembaruan Target Otomatis
+            useEffect(() => {
+                if (st !== 'playing') return;
+                const valid = entities.enemies.filter(e => !entities.failed.has(e.id));
+                if (!valid.length) return setActiveId(null);
+                setActiveId(valid.reduce((p, c) => (c.y > p.y ? c : p)).id);
+            }, [entities.enemies, entities.failed, st]);
+
+            // Game Loop (Bergerak & Munculnya musuh)
+            useEffect(() => {
+                if (st !== 'playing') return;
+                const speed = 0.05 + sc.level * 0.01;
+                
+                const moveInt = setInterval(() => {
+                    setEntities(prev => {
+                        let dmg = 0;
+                        const enemies = prev.enemies.map(e => {
+                            const newY = e.y + speed;
+                            if (newY > 85) dmg++;
+                            return { ...e, y: newY };
+                        }).filter(e => e.y <= 85);
+                        
+                        if (dmg > 0) {
+                            playSound('damage'); setShake(true); setTimeout(() => setShake(false), 300);
+                            setSc(s => { const nh = s.hp - dmg; if (nh <= 0) setSt('gameover'); return { ...s, hp: nh }; });
+                        }
+                        
+                        const failed = new Set(prev.failed);
+                        prev.enemies.forEach(e => { if(e.y + speed > 85) failed.delete(e.id); });
+                        
+                        return { ...prev, enemies, failed, lasers: prev.lasers.filter(l => Date.now() - l.t < 300) };
+                    });
+                }, 50);
+
+                const spawnInt = setInterval(() => {
+                    setEntities(prev => prev.enemies.length >= 3 ? prev : {
+                        ...prev,
+                        enemies: [...prev.enemies, { id: Math.random().toString(36).slice(2,9), x: 10 + Math.random() * 70, y: 0, ...generateMathProblem(sc.level) }]
+                    });
+                }, Math.max(3000, 5000 - sc.level * 200));
+
+                return () => { clearInterval(moveInt); clearInterval(spawnInt); };
+            }, [st, sc.level, playSound]);
+
+            // Mengecek Jawaban
+            const handleAnswer = (ans) => {
+                if (st !== 'playing' || !activeId) return;
+                const target = entities.enemies.find(e => e.id === activeId);
+                if (!target) return;
+
+                if (target.a === ans) {
+                    playSound('shoot');
+                    setEntities(prev => ({
+                        ...prev,
+                        enemies: prev.enemies.filter(e => e.id !== activeId),
+                        lasers: [...prev.lasers, { id: Date.now(), t: Date.now(), x: target.x + 10, y: target.y }]
+                    }));
+                    setSc(s => {
+                        const nSc = s.score + 10 + s.level * 2;
+                        return { ...s, score: nSc, level: nSc % 100 < s.score % 100 ? s.level + 1 : s.level };
+                    });
+                } else {
+                    playSound('wrong'); setShake(true); setTimeout(() => setShake(false), 300);
+                    setSc(s => { const nh = s.hp - 1; if (nh <= 0) setSt('gameover'); return { ...s, hp: nh }; });
+                    setEntities(prev => ({ ...prev, failed: new Set(prev.failed).add(activeId) }));
+                }
+            };
+
+            const start = () => { setSt('playing'); setSc({score: 0, hp: 3, level: 1}); setEntities({enemies: [], lasers: [], failed: new Set()}); setActiveId(null); };
+            const targetOpts = entities.enemies.find(e => e.id === activeId)?.options || [];
+
+            return (
+                <div className={`w-full h-screen text-white flex flex-col relative ${shake ? 'animate-[shake_0.3s]' : ''}`}>
+                    
+                    {/* Efek Bintang Background */}
+                    <div className="absolute inset-0 pointer-events-none opacity-30">
+                        {[...Array(30)].map((_, i) => (
+                            <div key={`star-${i}`} className="absolute bg-white rounded-full"
+                                style={{ width: Math.random()*3+'px', height: Math.random()*3+'px', top: Math.random()*100+'%', left: Math.random()*100+'%', animation: `twinkle ${2+Math.random()*3}s infinite alternate` }} />
+                        ))}
+                    </div>
+
+                    {/* HUD - Informasi Darah & Skor */}
+                    {st !== 'menu' && (
+                        <div className="flex justify-between items-center p-4 bg-slate-900/80 border-b border-slate-800 z-10">
+                            <div>
+                                <span className="text-emerald-400 font-bold text-xl flex items-center gap-2">
+                                    <Zap size={20}/> {sc.score}
+                                </span>
+                                <span className="text-slate-400 text-xs font-bold tracking-wider">LEVEL {sc.level}</span>
+                            </div>
+                            <div className="flex gap-2">
+                                {[1,2,3].map(i => <Heart key={i} filled={i <= sc.hp} className={i <= sc.hp ? 'text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-slate-700'} />)}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Area Permainan Utama */}
+                    <div className="flex-1 relative max-w-4xl w-full mx-auto border-x border-slate-800/50">
+                        
+                        {/* Layar Menu Utama */}
+                        {st === 'menu' && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-20 px-4">
+                                <Rocket size={64} className="text-cyan-400 mb-6 animate-bounce" />
+                                <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 mb-2 text-center">MathQuest</h1>
+                                <p className="text-slate-400 mb-8 max-w-md text-center text-sm">Jawab benar untuk menembak target! Jika salah, target terkunci dan nyawa kamu akan berkurang.</p>
+                                <button onClick={start} className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-full flex gap-2 transition hover:scale-105">
+                                    <Play/> MULAI MISI
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Layar Game Over */}
+                        {st === 'gameover' && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-rose-950/90 backdrop-blur-md z-20">
+                                <ShieldAlert size={64} className="text-rose-500 mb-4" />
+                                <h2 className="text-4xl font-black mb-2 text-white">SISTEM HANCUR</h2>
+                                <p className="text-xl mb-8 text-rose-200">Skor Akhir: <span className="font-bold text-white">{sc.score}</span></p>
+                                <button onClick={start} className="px-8 py-4 bg-white text-rose-900 hover:bg-slate-200 font-bold rounded-full flex gap-2 transition hover:scale-105 shadow-lg shadow-white/20">
+                                    <RotateCcw/> MAIN LAGI
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Merender Musuh / Target */}
+                        {st === 'playing' && entities.enemies.map(e => {
+                            const isT = e.id === activeId, isF = entities.failed.has(e.id);
+                            return (
+                                <div key={e.id} className={`absolute p-4 rounded-xl flex flex-col items-center -translate-x-1/2 transition-all 
+                                    ${isF ? 'bg-rose-950/60 border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 
+                                      isT ? 'bg-slate-800 border-2 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.5)] z-10' : 
+                                      'bg-slate-800/80 border border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.4)]'}`}
+                                    style={{ left: `${e.x}%`, top: `${e.y}%`, animation: isT && !isF ? 'targetPulse 1.5s infinite' : 'none' }}>
+                                    
+                                    <span className={`text-[10px] font-bold tracking-wider mb-1 ${isF ? 'text-rose-400' : isT ? 'text-cyan-400' : 'text-purple-400'}`}>
+                                        {isF ? 'MISSED' : isT ? 'TARGET: ' + e.type : e.type}
+                                    </span>
+                                    <span className={`text-xl md:text-2xl font-mono font-bold ${isF ? 'text-rose-200' : 'text-white'}`}>{e.q}</span>
+                                    
+                                    {isF && <XCircle size={24} className="absolute -top-3 -right-3 text-rose-500 bg-slate-900 rounded-full" />}
+                                </div>
+                            );
+                        })}
+
+                        {/* Merender Tembakan Laser */}
+                        {st === 'playing' && entities.lasers.map(l => (
+                            <svg key={l.id} className="absolute inset-0 w-full h-full pointer-events-none z-10">
+                                <line x1="50%" y1="90%" x2={`${l.x}%`} y2={`${l.y}%`} stroke="#22d3ee" strokeWidth="6" strokeDasharray="15,5" style={{ filter: 'drop-shadow(0 0 10px #22d3ee)' }} />
+                            </svg>
+                        ))}
+
+                        {/* Indikator Pemain */}
+                        {st === 'playing' && (
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
+                                <Crosshair size={32} className={`mb-2 opacity-50 ${activeId ? 'text-cyan-400' : 'text-slate-600'}`} />
+                                <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center transition-all ${activeId ? 'border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.3)] bg-slate-800' : 'border-slate-600 bg-slate-900'}`}>
+                                    <Rocket size={32} className={activeId ? 'text-white' : 'text-slate-500'} />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Area Tombol Kontrol / Pilihan Ganda */}
+                    <div className="p-4 md:p-6 bg-slate-900 z-10 border-t border-slate-800">
+                        <div className="max-w-2xl mx-auto">
+                            {st === 'playing' ? (
+                                <>
+                                    <div className="text-center mb-3 text-slate-400 text-sm h-5 font-bold">
+                                        {activeId ? "Pilih jawaban untuk target biru" : <span className="text-amber-400 animate-pulse">Menunggu target baru...</span>}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {targetOpts.length > 0 ? targetOpts.map((opt, i) => (
+                                            <button key={i} onClick={() => handleAnswer(opt)} 
+                                                className="py-4 bg-slate-800 hover:bg-slate-700 border-2 border-slate-600 hover:border-cyan-400 text-white text-xl md:text-2xl font-mono font-bold rounded-xl active:scale-95 transition-all">
+                                                {opt}
+                                            </button>
+                                        )) : (
+                                            <div className="col-span-2 text-center py-6 border-2 border-dashed border-slate-700 text-slate-500 rounded-xl">
+                                                Mencari target dimensi...
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-center py-8 text-slate-600 border-2 border-dashed border-slate-800 rounded-xl font-bold">
+                                    Sistem Senjata Offline
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
         }
-        
-        const failed = new Set(prev.failed);
-        prev.enemies.forEach(e => { if(e.y + speed > 85) failed.delete(e.id); });
-        
-        return { ...prev, enemies, failed, lasers: prev.lasers.filter(l => Date.now() - l.t < 300) };
-      });
-    }, 50);
 
-    const spawnInt = setInterval(() => {
-      setEntities(prev => prev.enemies.length >= 3 ? prev : {
-        ...prev,
-        enemies: [...prev.enemies, { id: Math.random().toString(36).slice(2,9), x: 10 + Math.random() * 70, y: 0, ...generateMathProblem(sc.level) }]
-      });
-    }, Math.max(3000, 5000 - sc.level * 200));
-
-    return () => { clearInterval(moveInt); clearInterval(spawnInt); };
-  }, [st, sc.level, playSound]);
-
-  const handleAnswer = (ans) => {
-    if (st !== 'playing' || !activeId) return;
-    const target = entities.enemies.find(e => e.id === activeId);
-    if (!target) return;
-
-    if (target.a === ans) {
-      playSound('shoot');
-      setEntities(prev => ({
-        ...prev,
-        enemies: prev.enemies.filter(e => e.id !== activeId),
-        lasers: [...prev.lasers, { id: Date.now(), t: Date.now(), x: target.x + 10, y: target.y }]
-      }));
-      setSc(s => {
-        const nSc = s.score + 10 + s.level * 2;
-        return { ...s, score: nSc, level: nSc % 100 < s.score % 100 ? s.level + 1 : s.level };
-      });
-    } else {
-      playSound('wrong'); setShake(true); setTimeout(() => setShake(false), 300);
-      setSc(s => { const nh = s.hp - 1; if (nh <= 0) setSt('gameover'); return { ...s, hp: nh }; });
-      setEntities(prev => ({ ...prev, failed: new Set(prev.failed).add(activeId) }));
-    }
-  };
-
-  const start = () => { setSt('playing'); setSc({score: 0, hp: 3, level: 1}); setEntities({enemies: [], lasers: [], failed: new Set()}); setActiveId(null); };
-  const targetOpts = entities.enemies.find(e => e.id === activeId)?.options || [];
-
-  return (
-    <div className={`w-full h-screen bg-slate-950 text-white font-sans flex flex-col relative overflow-hidden ${shake ? 'animate-[shake_0.3s]' : ''}`}>
-      <style>{`@keyframes shake { 0%, 100% { transform: translateX(0); } 25%, 75% { transform: translateX(-10px); } 50% { transform: translateX(10px); } }`}</style>
-      
-      {/* HUD */}
-      {st !== 'menu' && (
-        <div className="flex justify-between p-4 bg-slate-900/80 z-10">
-          <div><span className="text-emerald-400 font-bold text-xl flex items-center gap-2"><Zap size={20}/> {sc.score}</span><span className="text-slate-400 text-xs">LVL {sc.level}</span></div>
-          <div className="flex gap-2">{[1,2,3].map(i => <Heart key={i} className={i <= sc.hp ? 'text-rose-500 fill-rose-500' : 'text-slate-700'} />)}</div>
-        </div>
-      )}
-
-      {/* Main Area */}
-      <div className="flex-1 relative max-w-4xl w-full mx-auto border-x border-slate-800/50">
-        {st === 'menu' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 z-20">
-            <Rocket size={64} className="text-cyan-400 mb-6 animate-bounce" />
-            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 mb-2">MathQuest</h1>
-            <p className="text-slate-400 mb-8 max-w-md text-center">Jawab benar untuk menembak! Salah jawab, nyawa hilang dan ganti target.</p>
-            <button onClick={start} className="px-8 py-4 bg-cyan-500 text-slate-950 font-bold rounded-full flex gap-2 hover:scale-105"><Play/> MULAI</button>
-          </div>
-        )}
-
-        {st === 'gameover' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-rose-950/90 z-20">
-            <ShieldAlert size={64} className="text-rose-500 mb-4" />
-            <h2 className="text-4xl font-black mb-2">GAME OVER</h2>
-            <p className="text-xl mb-8">Skor: {sc.score}</p>
-            <button onClick={start} className="px-8 py-4 bg-white text-rose-900 font-bold rounded-full flex gap-2 hover:scale-105"><RotateCcw/> LAGI</button>
-          </div>
-        )}
-
-        {/* Entities */}
-        {st === 'playing' && entities.enemies.map(e => {
-          const isT = e.id === activeId, isF = entities.failed.has(e.id);
-          return (
-            <div key={e.id} className={`absolute p-4 rounded-xl flex flex-col items-center -translate-x-1/2 transition-all 
-              ${isF ? 'bg-rose-950/60 border-rose-500' : isT ? 'bg-slate-800 border-2 border-cyan-400' : 'bg-slate-800/80 border border-purple-500/50'}`}
-              style={{ left: `${e.x}%`, top: `${e.y}%`, animation: isT && !isF ? 'pulse 1.5s infinite' : 'none' }}>
-              <span className={`text-[10px] font-bold ${isF ? 'text-rose-400' : isT ? 'text-cyan-400' : 'text-purple-400'}`}>{isF ? 'MISSED' : isT ? 'TARGET' : e.type}</span>
-              <span className={`text-2xl font-mono font-bold ${isF ? 'text-rose-200' : 'text-white'}`}>{e.q}</span>
-              {isF && <XCircle className="absolute -top-3 -right-3 text-rose-500 bg-slate-900 rounded-full" />}
-            </div>
-          );
-        })}
-
-        {st === 'playing' && entities.lasers.map(l => (
-          <svg key={l.id} className="absolute inset-0 w-full h-full pointer-events-none z-10">
-            <line x1="50%" y1="90%" x2={`${l.x}%`} y2={`${l.y}%`} stroke="#22d3ee" strokeWidth="6" strokeDasharray="15,5" />
-          </svg>
-        ))}
-
-        {st === 'playing' && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
-            <Crosshair className={`mb-2 opacity-50 ${activeId ? 'text-cyan-400' : 'text-slate-600'}`} />
-            <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center ${activeId ? 'border-cyan-400 bg-slate-800' : 'border-slate-600 bg-slate-900'}`}>
-              <Rocket className={activeId ? 'text-white' : 'text-slate-500'} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Controls */}
-      <div className="p-4 bg-slate-900 z-10 border-t border-slate-800">
-        <div className="max-w-2xl mx-auto">
-          {st === 'playing' ? (
-             <div className="grid grid-cols-2 gap-3">
-               {targetOpts.length > 0 ? targetOpts.map((opt, i) => (
-                 <button key={i} onClick={() => handleAnswer(opt)} className="py-4 bg-slate-800 hover:bg-slate-700 border-2 border-slate-600 hover:border-cyan-400 text-white text-2xl font-mono font-bold rounded-xl active:scale-95">
-                   {opt}
-                 </button>
-               )) : <div className="col-span-2 text-center py-6 border-2 border-dashed border-slate-700 text-slate-500 rounded-xl">Mencari target...</div>}
-             </div>
-          ) : <div className="text-center py-6 text-slate-600 border-2 border-dashed border-slate-800 rounded-xl">Offline</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
+        // --- Render Aplikasi ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<MathQuest />);
+    </script>
+</body>
+</html>
