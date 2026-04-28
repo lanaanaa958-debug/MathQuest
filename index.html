@@ -1,491 +1,219 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Rocket, Heart, Zap, ShieldAlert, Play, RotateCcw, Crosshair, XCircle } from 'lucide-react';
 
-// --- Utility: Array Pengacak ---
-const shuffleArray = (array) => {
-  const newArray = [...array];
-  for (let i = newArray.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-  }
-  return newArray;
-};
+const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
 
-// --- Utility: Pembuat Soal Matematika SMA (Pilihan Ganda) ---
 const generateMathProblem = (level) => {
   const types = ['logaritma', 'turunan', 'trigonometri', 'integral', 'aljabar'];
-  const availableTypes = types.slice(0, Math.min(types.length, 2 + Math.floor(level / 2)));
-  const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+  const type = types[Math.floor(Math.random() * Math.min(types.length, 2 + Math.floor(level / 2)))];
 
-  let q = '';
-  let a = '';
-  let wrongAnswers = [];
-
+  let q, a, w = [];
   switch (type) {
     case 'logaritma':
-      const bases = [2, 3, 5];
-      const base = bases[Math.floor(Math.random() * bases.length)];
-      const result = Math.floor(Math.random() * 3) + 1;
-      const val = Math.pow(base, result);
-      const superscript = base === 2 ? '²' : base === 3 ? '³' : '⁵';
-      q = `${superscript}log(${val})`;
-      a = result.toString();
-      wrongAnswers = [(result + 1).toString(), (result + 2).toString(), (Math.max(1, result - 1)).toString(), (result * 2).toString()];
-      wrongAnswers = [...new Set(wrongAnswers)].filter(w => w !== a).slice(0, 3);
+      const base = [2, 3, 5][Math.floor(Math.random() * 3)];
+      const res = Math.floor(Math.random() * 3) + 1;
+      q = `${base === 2 ? '²' : base === 3 ? '³' : '⁵'}log(${Math.pow(base, res)})`;
+      a = res.toString();
+      w = [res + 1, res + 2, Math.max(1, res - 1), res * 2].map(String);
       break;
-
     case 'turunan':
       const c = Math.floor(Math.random() * 4) + 1;
-      q = `f'(x) dari x² di x=${c}`;
+      q = `f'(x) dr x² di x=${c}`;
       a = (2 * c).toString();
-      wrongAnswers = [(c).toString(), (c * c).toString(), (2 * c + 2).toString(), (2 * c - 2).toString()];
-      wrongAnswers = [...new Set(wrongAnswers)].filter(w => w !== a).slice(0, 3);
+      w = [c, c * c, 2 * c + 2, 2 * c - 2].map(String);
       break;
-
     case 'trigonometri':
-      const trigProbs = [
-        { q: '2 sin(30°)', a: '1', w: ['0', '2', '0.5', '√2'] },
-        { q: 'cos(0°)', a: '1', w: ['0', '-1', '0.5', '∞'] },
-        { q: 'tan(45°)', a: '1', w: ['0', '√3', '1/√3', '-1'] },
-        { q: '2 cos(60°)', a: '1', w: ['2', '0.5', '√3', '0'] },
-        { q: '4 sin(30°)', a: '2', w: ['1', '4', '0.5', '√2'] }
-      ];
-      const selectedTrig = trigProbs[Math.floor(Math.random() * trigProbs.length)];
-      q = selectedTrig.q;
-      a = selectedTrig.a;
-      wrongAnswers = selectedTrig.w.filter(w => w !== a).slice(0, 3);
+      const trigs = [{q:'2sin(30°)', a:'1'}, {q:'cos(0°)', a:'1'}, {q:'tan(45°)', a:'1'}, {q:'4sin(30°)', a:'2'}];
+      const sel = trigs[Math.floor(Math.random() * trigs.length)];
+      q = sel.q; a = sel.a;
+      w = ['0', '2', '0.5', '√2', '-1', '√3'];
       break;
-
     case 'integral':
       const x = Math.floor(Math.random() * 3) + 1;
-      q = `∫ 2x dx batas [0, ${x}]`;
+      q = `∫ 2x dx bts [0, ${x}]`;
       a = (x * x).toString();
-      wrongAnswers = [(x).toString(), (x * 2).toString(), (x * x + 1).toString(), (x * x * x).toString()];
-      wrongAnswers = [...new Set(wrongAnswers)].filter(w => w !== a).slice(0, 3);
+      w = [x, x * 2, x * x + 1, x * x * x].map(String);
       break;
-
-    case 'aljabar':
     default:
-      const a_coeff = Math.floor(Math.random() * 5) + 2;
-      const ans = Math.floor(Math.random() * 10) + 1;
-      const b = a_coeff * ans;
-      q = `${a_coeff}x = ${b}, x=?`;
+      const ac = Math.floor(Math.random() * 5) + 2, ans = Math.floor(Math.random() * 10) + 1;
+      q = `${ac}x = ${ac * ans}, x=?`;
       a = ans.toString();
-      wrongAnswers = [(ans + 1).toString(), (ans - 1).toString(), (ans * 2).toString(), (Math.floor(ans / 2)).toString()];
-      wrongAnswers = [...new Set(wrongAnswers.filter(n => parseInt(n, 10) > 0 && n !== a))];
-      while (wrongAnswers.length < 3) {
-        const rand = Math.floor(Math.random() * 15) + 1;
-        if (rand.toString() !== a && !wrongAnswers.includes(rand.toString())) {
-          wrongAnswers.push(rand.toString());
-        }
-      }
-      wrongAnswers = wrongAnswers.slice(0, 3);
-      break;
+      w = [ans + 1, ans - 1, ans * 2, Math.floor(Math.random() * 15) + 1].map(String);
   }
 
-  const options = shuffleArray([a, ...wrongAnswers]);
-  return { q, a, options, type: type.charAt(0).toUpperCase() + type.slice(1) };
+  w = [...new Set(w)].filter(x => x !== a).slice(0, 3);
+  while(w.length < 3) w.push(Math.floor(Math.random() * 20).toString());
+  return { q, a, options: shuffle([a, ...w.slice(0,3)]), type: type.toUpperCase() };
 };
 
 export default function MathQuest() {
-  // --- Game States ---
-  const [gameState, setGameState] = useState('menu');
-  const [score, setScore] = useState(0);
-  const [health, setHealth] = useState(3);
-  const [level, setLevel] = useState(1);
-  const [enemies, setEnemies] = useState([]);
-  const [lasers, setLasers] = useState([]);
-  const [isShaking, setIsShaking] = useState(false);
-  
-  const [currentOptions, setCurrentOptions] = useState([]);
-  const [activeEnemyId, setActiveEnemyId] = useState(null);
-  const [failedEnemyIds, setFailedEnemyIds] = useState(new Set()); 
+  const [st, setSt] = useState('menu'); // menu, playing, gameover
+  const [sc, setSc] = useState({ score: 0, hp: 3, level: 1 });
+  const [entities, setEntities] = useState({ enemies: [], lasers: [], failed: new Set() });
+  const [activeId, setActiveId] = useState(null);
+  const [shake, setShake] = useState(false);
 
-  const gameAreaRef = useRef(null);
-  
-  // Aman untuk SSR/Vercel: Cek window sebelum menggunakan AudioContext
   const playSound = useCallback((type) => {
-    if (typeof window === 'undefined') return;
-    
+    if (typeof window === 'undefined' || !window.AudioContext) return;
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return; // Fallback jika browser tidak mendukung
-      
       const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      
-      if (type === 'shoot') {
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.1);
-      } else if (type === 'damage' || type === 'wrong') {
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(type === 'wrong' ? 150 : 100, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.3);
-        gain.gain.setValueAtTime(0.2, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.3);
-      }
-    } catch (e) {
-      console.warn("Audio play failed:", e);
-    }
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = type === 'shoot' ? 'square' : 'sawtooth';
+      osc.frequency.setValueAtTime(type === 'shoot' ? 880 : (type === 'wrong' ? 150 : 100), ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(type === 'shoot' ? 110 : 40, ctx.currentTime + (type === 'shoot' ? 0.1 : 0.3));
+      gain.gain.setValueAtTime(type === 'shoot' ? 0.1 : 0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + (type === 'shoot' ? 0.1 : 0.3));
+      osc.start(); osc.stop(ctx.currentTime + (type === 'shoot' ? 0.1 : 0.3));
+    } catch (e) {}
   }, []);
 
-  // --- Memperbarui Target Musuh & Status Tombol ---
+  // Update Target
   useEffect(() => {
-    if (gameState !== 'playing' || enemies.length === 0) {
-      setCurrentOptions([]);
-      setActiveEnemyId(null);
-      return;
-    }
+    if (st !== 'playing') return;
+    const valid = entities.enemies.filter(e => !entities.failed.has(e.id));
+    if (!valid.length) return setActiveId(null);
+    setActiveId(valid.reduce((p, c) => (c.y > p.y ? c : p)).id);
+  }, [entities.enemies, entities.failed, st]);
 
-    // CARI TARGET BARU: 
-    // Ambil musuh yang PALING BAWAH, TAPI BELUM GAGAL (tidak ada di failedEnemyIds)
-    const validTargets = enemies.filter(enemy => !failedEnemyIds.has(enemy.id));
-
-    if (validTargets.length === 0) {
-      setCurrentOptions([]);
-      setActiveEnemyId(null);
-      return;
-    }
-
-    let lowestEnemy = validTargets[0];
-    for (let i = 1; i < validTargets.length; i++) {
-      if (validTargets[i].y > lowestEnemy.y) {
-        lowestEnemy = validTargets[i];
-      }
-    }
-
-    if (lowestEnemy.id !== activeEnemyId) {
-      setActiveEnemyId(lowestEnemy.id);
-      setCurrentOptions(lowestEnemy.options);
-    }
-  }, [enemies, gameState, failedEnemyIds, activeEnemyId]);
-
-  // --- Game Loop (Movement & Spawning) ---
+  // Game Loop
   useEffect(() => {
-    if (gameState !== 'playing') return;
-
-    const moveInterval = setInterval(() => {
-      setEnemies((prevEnemies) => {
-        const nextEnemies = [];
-        let damageTaken = 0;
-
-        for (const enemy of prevEnemies) {
-          const newY = enemy.y + (0.05 + level * 0.01);
-          
-          if (newY > 85) {
-            damageTaken += 1;
-            setFailedEnemyIds(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(enemy.id);
-              return newSet;
-            });
-          } else {
-            nextEnemies.push({ ...enemy, y: newY });
-          }
+    if (st !== 'playing') return;
+    const speed = 0.05 + sc.level * 0.01;
+    
+    const moveInt = setInterval(() => {
+      setEntities(prev => {
+        let dmg = 0;
+        const enemies = prev.enemies.map(e => {
+          const newY = e.y + speed;
+          if (newY > 85) dmg++;
+          return { ...e, y: newY };
+        }).filter(e => e.y <= 85);
+        
+        if (dmg > 0) {
+          playSound('damage'); setShake(true); setTimeout(() => setShake(false), 300);
+          setSc(s => { const nh = s.hp - dmg; if (nh <= 0) setSt('gameover'); return { ...s, hp: nh }; });
         }
-
-        if (damageTaken > 0) {
-          playSound('damage');
-          setIsShaking(true);
-          setTimeout(() => setIsShaking(false), 300);
-          setHealth((prev) => {
-            const newHealth = prev - damageTaken;
-            if (newHealth <= 0) setGameState('gameover');
-            return newHealth;
-          });
-        }
-
-        return nextEnemies;
+        
+        const failed = new Set(prev.failed);
+        prev.enemies.forEach(e => { if(e.y + speed > 85) failed.delete(e.id); });
+        
+        return { ...prev, enemies, failed, lasers: prev.lasers.filter(l => Date.now() - l.t < 300) };
       });
-
-      setLasers((prev) => prev.filter(l => Date.now() - l.timestamp < 300));
-
     }, 50);
 
-    const spawnRate = Math.max(3000, 5000 - level * 200); 
-    const spawnInterval = setInterval(() => {
-      setEnemies((prev) => {
-        if (prev.length >= 3) return prev;
-        
-        const problem = generateMathProblem(level);
-        const randomX = 10 + Math.random() * 70; 
-        
-        return [...prev, {
-          id: Math.random().toString(36).substring(2, 11), // Perbaikan dari substr (deprecated)
-          x: randomX,
-          y: 0,
-          q: problem.q,
-          a: problem.a,
-          options: problem.options,
-          type: problem.type
-        }];
+    const spawnInt = setInterval(() => {
+      setEntities(prev => prev.enemies.length >= 3 ? prev : {
+        ...prev,
+        enemies: [...prev.enemies, { id: Math.random().toString(36).slice(2,9), x: 10 + Math.random() * 70, y: 0, ...generateMathProblem(sc.level) }]
       });
-    }, spawnRate);
+    }, Math.max(3000, 5000 - sc.level * 200));
 
-    return () => {
-      clearInterval(moveInterval);
-      clearInterval(spawnInterval);
-    };
-  }, [gameState, level, playSound]);
+    return () => { clearInterval(moveInt); clearInterval(spawnInt); };
+  }, [st, sc.level, playSound]);
 
-  // --- Level Progression ---
-  useEffect(() => {
-    if (score > 0 && score % 100 === 0) {
-      setLevel((prev) => prev + 1);
-    }
-  }, [score]);
+  const handleAnswer = (ans) => {
+    if (st !== 'playing' || !activeId) return;
+    const target = entities.enemies.find(e => e.id === activeId);
+    if (!target) return;
 
-  // --- Handling Jawaban Pilihan Ganda ---
-  const handleAnswer = (selectedAnswer) => {
-    if (gameState !== 'playing' || !activeEnemyId) return;
-
-    const targetEnemyIndex = enemies.findIndex(enemy => enemy.id === activeEnemyId);
-    
-    if (targetEnemyIndex !== -1) {
-      const targetEnemy = enemies[targetEnemyIndex];
-      
-      if (targetEnemy.a === selectedAnswer) {
-        // BENAR
-        playSound('shoot');
-        setLasers(prev => [...prev, {
-          id: Date.now(),
-          timestamp: Date.now(),
-          endX: targetEnemy.x + 10,
-          endY: targetEnemy.y
-        }]);
-
-        setEnemies(prev => prev.filter((_, idx) => idx !== targetEnemyIndex));
-        setScore(prev => prev + 10 + (level * 2));
-      } else {
-        // SALAH
-        playSound('wrong');
-        setIsShaking(true);
-        setTimeout(() => setIsShaking(false), 300);
-        
-        setHealth((prev) => {
-            const newHealth = prev - 1;
-            if (newHealth <= 0) setGameState('gameover');
-            return newHealth;
-        });
-
-        // TANDAI MUSUH INI GAGAL
-        setFailedEnemyIds(prev => {
-          const newSet = new Set(prev);
-          newSet.add(activeEnemyId);
-          return newSet;
-        });
-      }
+    if (target.a === ans) {
+      playSound('shoot');
+      setEntities(prev => ({
+        ...prev,
+        enemies: prev.enemies.filter(e => e.id !== activeId),
+        lasers: [...prev.lasers, { id: Date.now(), t: Date.now(), x: target.x + 10, y: target.y }]
+      }));
+      setSc(s => {
+        const nSc = s.score + 10 + s.level * 2;
+        return { ...s, score: nSc, level: nSc % 100 < s.score % 100 ? s.level + 1 : s.level };
+      });
+    } else {
+      playSound('wrong'); setShake(true); setTimeout(() => setShake(false), 300);
+      setSc(s => { const nh = s.hp - 1; if (nh <= 0) setSt('gameover'); return { ...s, hp: nh }; });
+      setEntities(prev => ({ ...prev, failed: new Set(prev.failed).add(activeId) }));
     }
   };
 
-  const startGame = () => {
-    setGameState('playing');
-    setScore(0);
-    setHealth(3);
-    setLevel(1);
-    setEnemies([]);
-    setLasers([]);
-    setCurrentOptions([]);
-    setActiveEnemyId(null);
-    setFailedEnemyIds(new Set());
-  };
+  const start = () => { setSt('playing'); setSc({score: 0, hp: 3, level: 1}); setEntities({enemies: [], lasers: [], failed: new Set()}); setActiveId(null); };
+  const targetOpts = entities.enemies.find(e => e.id === activeId)?.options || [];
 
   return (
-    <div className={`w-full h-screen bg-slate-950 text-white font-sans overflow-hidden flex flex-col relative ${isShaking ? 'animate-[shake_0.3s_ease-in-out]' : ''}`}>
-      <div className="absolute inset-0 pointer-events-none opacity-30">
-        {[...Array(50)].map((_, i) => (
-          <div 
-            key={`star-${i}`} 
-            className="absolute bg-white rounded-full"
-            style={{
-              width: Math.random() * 3 + 'px',
-              height: Math.random() * 3 + 'px',
-              top: Math.random() * 100 + '%',
-              left: Math.random() * 100 + '%',
-              animation: `twinkle ${2 + Math.random() * 3}s infinite alternate`
-            }}
-          />
-        ))}
-      </div>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes twinkle { 0% { opacity: 0.2; } 100% { opacity: 1; transform: scale(1.5); } }
-        @keyframes targetPulse { 0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(34, 211, 238, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); } }
-        @keyframes shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
-      `}} />
-
-      {/* --- HUD --- */}
-      {gameState !== 'menu' && (
-        <div className="flex justify-between items-center p-4 z-10 bg-slate-900/80 backdrop-blur-md border-b border-slate-800">
-          <div className="flex flex-col">
-            <span className="text-emerald-400 font-bold text-xl tracking-widest flex items-center gap-2">
-              <Zap size={20} className={gameState === 'playing' ? "animate-pulse" : ""}/> {score}
-            </span>
-            <span className="text-slate-400 text-xs font-bold">LEVEL {level}</span>
-          </div>
-          <div className="flex gap-2">
-            {[...Array(3)].map((_, i) => (
-              <Heart 
-                key={`heart-${i}`} 
-                size={24} 
-                className={`${i < health ? 'text-rose-500 fill-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-slate-700'} transition-all duration-300`} 
-              />
-            ))}
-          </div>
+    <div className={`w-full h-screen bg-slate-950 text-white font-sans flex flex-col relative overflow-hidden ${shake ? 'animate-[shake_0.3s]' : ''}`}>
+      <style>{`@keyframes shake { 0%, 100% { transform: translateX(0); } 25%, 75% { transform: translateX(-10px); } 50% { transform: translateX(10px); } }`}</style>
+      
+      {/* HUD */}
+      {st !== 'menu' && (
+        <div className="flex justify-between p-4 bg-slate-900/80 z-10">
+          <div><span className="text-emerald-400 font-bold text-xl flex items-center gap-2"><Zap size={20}/> {sc.score}</span><span className="text-slate-400 text-xs">LVL {sc.level}</span></div>
+          <div className="flex gap-2">{[1,2,3].map(i => <Heart key={i} className={i <= sc.hp ? 'text-rose-500 fill-rose-500' : 'text-slate-700'} />)}</div>
         </div>
       )}
 
-      {/* --- Main Game Area --- */}
-      <div ref={gameAreaRef} className="flex-1 relative w-full max-w-4xl mx-auto border-x border-slate-800/50">
-        
-        {/* Menu Screen */}
-        {gameState === 'menu' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-20 px-4">
+      {/* Main Area */}
+      <div className="flex-1 relative max-w-4xl w-full mx-auto border-x border-slate-800/50">
+        {st === 'menu' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 z-20">
             <Rocket size={64} className="text-cyan-400 mb-6 animate-bounce" />
-            <h1 className="text-4xl md:text-5xl font-black bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500 mb-2 text-center">
-              MathQuest:<br/>Dimension Rift
-            </h1>
-            <p className="text-slate-400 mb-10 max-w-md text-center text-sm md:text-base">
-              Pilih jawaban yang benar! Jika salah, nyawa berkurang dan kamu harus menyerang target lain.
-            </p>
-            <button 
-              onClick={startGame}
-              className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-full flex items-center gap-3 transition-transform hover:scale-105 active:scale-95"
-            >
-              <Play size={24} fill="currentColor" /> MULAI MISI
-            </button>
+            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 mb-2">MathQuest</h1>
+            <p className="text-slate-400 mb-8 max-w-md text-center">Jawab benar untuk menembak! Salah jawab, nyawa hilang dan ganti target.</p>
+            <button onClick={start} className="px-8 py-4 bg-cyan-500 text-slate-950 font-bold rounded-full flex gap-2 hover:scale-105"><Play/> MULAI</button>
           </div>
         )}
 
-        {/* Game Over Screen */}
-        {gameState === 'gameover' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-rose-950/90 backdrop-blur-md z-20">
-            <ShieldAlert size={64} className="text-rose-500 mb-6" />
-            <h2 className="text-4xl font-black text-white mb-2">SISTEM KRITIS!</h2>
-            <p className="text-xl text-rose-200 mb-8">Skor Akhir: <span className="font-bold text-white">{score}</span> (Level {level})</p>
-            <button 
-              onClick={startGame}
-              className="px-8 py-4 bg-white hover:bg-slate-200 text-rose-900 font-bold rounded-full flex items-center gap-3 transition-transform hover:scale-105 active:scale-95 shadow-lg shadow-white/20"
-            >
-              <RotateCcw size={24} /> MAIN LAGI
-            </button>
+        {st === 'gameover' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-rose-950/90 z-20">
+            <ShieldAlert size={64} className="text-rose-500 mb-4" />
+            <h2 className="text-4xl font-black mb-2">GAME OVER</h2>
+            <p className="text-xl mb-8">Skor: {sc.score}</p>
+            <button onClick={start} className="px-8 py-4 bg-white text-rose-900 font-bold rounded-full flex gap-2 hover:scale-105"><RotateCcw/> LAGI</button>
           </div>
         )}
 
-        {/* Enemies */}
-        {gameState === 'playing' && enemies.map((enemy) => {
-          const isTarget = enemy.id === activeEnemyId;
-          const isFailed = failedEnemyIds.has(enemy.id);
-          
-          let enemyStyle = 'bg-slate-800/80 border border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.4)]';
-          let textColor = 'text-white';
-          let typeColor = 'text-purple-400';
-          let animation = 'none';
-
-          if (isFailed) {
-             enemyStyle = 'bg-rose-950/80 border-2 border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.6)] opacity-60';
-             textColor = 'text-rose-200';
-             typeColor = 'text-rose-400';
-          } else if (isTarget) {
-             enemyStyle = 'bg-slate-800 border-2 border-cyan-400 z-10 shadow-[0_0_20px_rgba(34,211,238,0.5)]';
-             typeColor = 'text-cyan-400';
-             animation = 'targetPulse 1.5s infinite';
-          }
-
+        {/* Entities */}
+        {st === 'playing' && entities.enemies.map(e => {
+          const isT = e.id === activeId, isF = entities.failed.has(e.id);
           return (
-            <div 
-              key={enemy.id}
-              className={`absolute p-4 rounded-xl flex flex-col items-center justify-center transition-all duration-100 linear ${enemyStyle}`}
-              style={{ 
-                left: `${enemy.x}%`, 
-                top: `${enemy.y}%`,
-                transform: 'translateX(-50%)',
-                animation: animation
-              }}
-            >
-              <span className={`text-[10px] font-bold tracking-wider uppercase mb-1 ${typeColor}`}>
-                {isTarget && !isFailed ? '► TARGET: ' : ''}{isFailed ? 'MISSED: ' : ''}{enemy.type}
-              </span>
-              <span className={`text-xl md:text-2xl font-mono font-bold whitespace-nowrap ${textColor}`}>{enemy.q}</span>
-              {isFailed && <XCircle size={24} className="absolute -top-3 -right-3 text-rose-500 bg-slate-900 rounded-full" />}
+            <div key={e.id} className={`absolute p-4 rounded-xl flex flex-col items-center -translate-x-1/2 transition-all 
+              ${isF ? 'bg-rose-950/60 border-rose-500' : isT ? 'bg-slate-800 border-2 border-cyan-400' : 'bg-slate-800/80 border border-purple-500/50'}`}
+              style={{ left: `${e.x}%`, top: `${e.y}%`, animation: isT && !isF ? 'pulse 1.5s infinite' : 'none' }}>
+              <span className={`text-[10px] font-bold ${isF ? 'text-rose-400' : isT ? 'text-cyan-400' : 'text-purple-400'}`}>{isF ? 'MISSED' : isT ? 'TARGET' : e.type}</span>
+              <span className={`text-2xl font-mono font-bold ${isF ? 'text-rose-200' : 'text-white'}`}>{e.q}</span>
+              {isF && <XCircle className="absolute -top-3 -right-3 text-rose-500 bg-slate-900 rounded-full" />}
             </div>
           );
         })}
 
-        {/* Lasers */}
-        {gameState === 'playing' && lasers.map(laser => (
-          <svg key={laser.id} className="absolute inset-0 w-full h-full pointer-events-none z-10">
-            <line 
-              x1="50%" 
-              y1="90%" 
-              x2={`${laser.endX}%`} 
-              y2={`${laser.endY}%`} 
-              stroke="#22d3ee" 
-              strokeWidth="6"
-              strokeDasharray="15, 5"
-              className="animate-pulse"
-              style={{ filter: 'drop-shadow(0 0 10px #22d3ee)' }}
-            />
+        {st === 'playing' && entities.lasers.map(l => (
+          <svg key={l.id} className="absolute inset-0 w-full h-full pointer-events-none z-10">
+            <line x1="50%" y1="90%" x2={`${l.x}%`} y2={`${l.y}%`} stroke="#22d3ee" strokeWidth="6" strokeDasharray="15,5" />
           </svg>
         ))}
 
-        {/* Player / Turret Indicator */}
-        {gameState === 'playing' && (
+        {st === 'playing' && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
-            <Crosshair size={32} className={`mb-2 opacity-50 ${activeEnemyId ? 'text-cyan-400' : 'text-slate-600'}`} />
-            <div className={`w-16 h-16 bg-slate-800 border-2 rounded-full flex items-center justify-center transition-colors
-              ${activeEnemyId ? 'border-cyan-400 shadow-[0_0_30px_rgba(34,211,238,0.3)]' : 'border-slate-600'}`}>
-              <Rocket size={32} className={activeEnemyId ? 'text-white' : 'text-slate-500'} />
+            <Crosshair className={`mb-2 opacity-50 ${activeId ? 'text-cyan-400' : 'text-slate-600'}`} />
+            <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center ${activeId ? 'border-cyan-400 bg-slate-800' : 'border-slate-600 bg-slate-900'}`}>
+              <Rocket className={activeId ? 'text-white' : 'text-slate-500'} />
             </div>
           </div>
         )}
       </div>
 
-      {/* --- Control Area (Pilihan Ganda) --- */}
-      <div className="p-4 md:p-6 bg-slate-900 border-t border-slate-800 z-10">
+      {/* Controls */}
+      <div className="p-4 bg-slate-900 z-10 border-t border-slate-800">
         <div className="max-w-2xl mx-auto">
-          {gameState === 'playing' ? (
-             <>
-               <div className="text-center mb-3 text-slate-400 text-sm h-5">
-                 {activeEnemyId 
-                    ? "Pilih jawaban untuk target yang ditandai"
-                    : <span className="text-amber-400 animate-pulse">Menunggu target baru (Target sebelumnya gagal)</span>}
-               </div>
-               <div className="grid grid-cols-2 gap-3 md:gap-4">
-                 {currentOptions.map((opt, idx) => (
-                   <button
-                     key={`opt-${idx}`}
-                     onClick={() => handleAnswer(opt)}
-                     className="py-4 px-6 bg-slate-800 hover:bg-slate-700 border-2 border-slate-600 hover:border-cyan-400 text-white text-xl md:text-2xl font-mono font-bold rounded-xl transition-all active:scale-95"
-                   >
-                     {opt}
-                   </button>
-                 ))}
-                 {currentOptions.length === 0 && (
-                   <div className="col-span-2 text-center py-6 border-2 border-dashed border-slate-700 rounded-xl text-slate-500 italic">
-                     Memindai dimensi untuk mencari target...
-                   </div>
-                 )}
-               </div>
-             </>
-          ) : (
-            <div className="text-center py-8 text-slate-500 italic border-2 border-dashed border-slate-700 rounded-xl">
-              Panel kontrol dinonaktifkan
-            </div>
-          )}
+          {st === 'playing' ? (
+             <div className="grid grid-cols-2 gap-3">
+               {targetOpts.length > 0 ? targetOpts.map((opt, i) => (
+                 <button key={i} onClick={() => handleAnswer(opt)} className="py-4 bg-slate-800 hover:bg-slate-700 border-2 border-slate-600 hover:border-cyan-400 text-white text-2xl font-mono font-bold rounded-xl active:scale-95">
+                   {opt}
+                 </button>
+               )) : <div className="col-span-2 text-center py-6 border-2 border-dashed border-slate-700 text-slate-500 rounded-xl">Mencari target...</div>}
+             </div>
+          ) : <div className="text-center py-6 text-slate-600 border-2 border-dashed border-slate-800 rounded-xl">Offline</div>}
         </div>
       </div>
-
     </div>
   );
 }
